@@ -172,13 +172,14 @@ def rank_properties(df: pd.DataFrame, req: Dict) -> pd.DataFrame:
             )
         ]
 
-    # Hard filter: requested amenities need supporting evidence.
+    # Filter out properties only when an amenity is
+    # explicitly unavailable. Keep unknown statuses.
     for amenity in ["parking", "security"]:
         if req.get(amenity) is True:
             out = out[
                 out.apply(
                     lambda row: (
-                        _amenity_status(row, amenity) is True
+                        _amenity_status(row, amenity) is not False
                     ),
                     axis=1,
                 )
@@ -255,13 +256,23 @@ def rank_properties(df: pd.DataFrame, req: Dict) -> pd.DataFrame:
                 why.append("location matches")
 
         # Requested amenities have already passed the hard filters.
-        if req.get("parking") is True:
-            points["Parking"] = 5.0
-            why.append("parking evidence found")
+        
+        # Score amenities using available evidence.
+        for amenity, label in [
+            ("parking", "Parking"),
+            ("security", "Security"),
+        ]:
+            if req.get(amenity) is True:
+                status = _amenity_status(row, amenity)
 
-        if req.get("security") is True:
-            points["Security"] = 5.0
-            why.append("security evidence found")
+                if status is True:
+                    points[label] = 5.0
+                    why.append(f"{amenity} evidence found")
+                else:
+                    points[label] = 0.0
+                    why.append(
+                        f"{amenity} not confirmed; verify with provider"
+                    )
 
         score = (
             sum(points.values()) / active_weights * 100
